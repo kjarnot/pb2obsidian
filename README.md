@@ -15,7 +15,7 @@ brew install pandoc
 ## Setup
 
 ```bash
-git clone <repo-url> && cd rtf2md
+git clone git@github.com:kjarnot/pb2obsidian.git && cd pb2obsidian
 uv sync
 ```
 
