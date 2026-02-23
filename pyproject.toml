@@ -1,0 +1,14 @@
+[project]
+name = "pb2obsidian"
+version = "0.1.0"
+description = "Clipboard RTF/HTML to Markdown converter with Obsidian image links"
+requires-python = ">=3.12"
+dependencies = [
+    "pyobjc-framework-cocoa",
+    "pypandoc",
+    "pillow",
+    "python-dotenv",
+]
+
+[project.scripts]
+pb2obsidian = "pb2obsidian:main"
