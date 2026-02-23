@@ -217,6 +217,13 @@ def parse_args():
         help="Directory to store extracted image files. Overrides the default subfolder location. "
              "Env: PB2OBSIDIAN_IMAGE_DIR.",
     )
+    parser.add_argument(
+        "--skip-note",
+        action="store_true",
+        default=os.environ.get("PB2OBSIDIAN_SKIP_NOTE", "").lower() in ("1", "true", "yes"),
+        help="Skip creating the Markdown file. Only extract images and place Markdown on clipboard. "
+             "Env: PB2OBSIDIAN_SKIP_NOTE.",
+    )
 
     args = parser.parse_args()
 
@@ -275,19 +282,21 @@ def main():
     markdown = convert_to_markdown(rich_bytes, source_format, image_dir)
     markdown, image_count = process_images(markdown, image_dir, base_name, max_width=args.image_width)
 
-    # Write Markdown to file
-    md_path.write_text(markdown, encoding="utf-8")
+    # Write Markdown to file (unless --skip-note)
+    if not args.skip_note:
+        md_path.write_text(markdown, encoding="utf-8")
 
     # Put Markdown on clipboard
     set_clipboard_text(markdown)
 
     # Summary
-    print(f"Markdown written to: {md_path}")
+    if not args.skip_note:
+        print(f"Markdown written to: {md_path}")
     if image_count > 0:
         print(f"Extracted {image_count} image(s) to: {image_dir}")
         if args.image_width:
             print(f"Images scaled to max width: {args.image_width}px")
-    print("Markdown also placed on clipboard.")
+    print("Markdown placed on clipboard.")
 
 
 if __name__ == "__main__":

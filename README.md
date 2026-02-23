@@ -37,6 +37,7 @@ Output is always relative to the current working directory.
 | `--image-width PX` | Maximum image width in pixels. Wider images are scaled down preserving aspect ratio. |
 | `--md-dir DIR` | Directory to store the Markdown file. Overrides the default subfolder. |
 | `--image-dir DIR` | Directory to store extracted images. Overrides the default subfolder. |
+| `--skip-note` | Skip creating the Markdown file. Only extract images and place Markdown on clipboard. |
 
 ### Examples
 
@@ -57,6 +58,9 @@ uv run python pb2obsidian.py -t "Meeting Notes" --md-dir ~/vault/notes --image-d
 
 # Combine options
 uv run python pb2obsidian.py -t "Q1 Planning" --image-width 1024 --image-dir ~/notes/images
+
+# Skip note file, only extract images and use clipboard
+uv run python pb2obsidian.py -t "Screenshot Batch" --image-dir ~/vault/attachments --skip-note
 ```
 
 ## Configuration
@@ -70,6 +74,7 @@ All options (except `--title`) can be set via environment variables or a `.env` 
 | `PB2OBSIDIAN_IMAGE_WIDTH` | `--image-width` |
 | `PB2OBSIDIAN_MD_DIR` | `--md-dir` |
 | `PB2OBSIDIAN_IMAGE_DIR` | `--image-dir` |
+| `PB2OBSIDIAN_SKIP_NOTE` | `--skip-note` (set to `1`, `true`, or `yes`) |
 
 ### `.env` File
 
@@ -80,6 +85,7 @@ Create a `.env` file in the project directory (next to `pb2obsidian.py`) or in y
 PB2OBSIDIAN_IMAGE_WIDTH=1024
 PB2OBSIDIAN_MD_DIR=~/Documents/obsidian-vault/notes
 PB2OBSIDIAN_IMAGE_DIR=~/Documents/obsidian-vault/attachments
+PB2OBSIDIAN_SKIP_NOTE=false
 ```
 
 ### Priority Order
