@@ -16,15 +16,17 @@ brew install pandoc
 
 ```bash
 git clone git@github.com:kjarnot/pb2obsidian.git && cd pb2obsidian
-uv sync
+uv tool install -e .
 ```
+
+This installs `pb2obsidian` as a globally available command. The `-e` (editable) flag means changes to the source take effect immediately without reinstalling.
 
 ## Usage
 
 Copy some rich text to the clipboard (from a webpage, email, MS Teams, Word, etc.), then run from your desired output directory:
 
 ```bash
-uv run python pb2obsidian.py
+pb2obsidian
 ```
 
 Output is always relative to the current working directory.
@@ -37,35 +39,35 @@ Output is always relative to the current working directory.
 | `--image-width PX` | Maximum image width in pixels. Wider images are scaled down preserving aspect ratio. |
 | `--md-dir DIR` | Directory to store the Markdown file. Overrides the default subfolder. |
 | `--image-dir DIR` | Directory to store extracted images. Overrides the default subfolder. |
-| `--skip-note` | Skip creating the Markdown file. Only extract images and place Markdown on clipboard. |
+| `--skip-note` | Skip creating the Markdown file. Only extract images and place Markdown on clipboard. (CLI only, no env var.) |
 
 ### Examples
 
 ```bash
 # Basic: output goes to ./clipboard-20260223-153651/
-uv run python pb2obsidian.py
+pb2obsidian
 
 # Named output with title
-uv run python pb2obsidian.py -t "AI Meeting 2026-02-01"
+pb2obsidian -t "AI Meeting 2026-02-01"
 # → ./ai_meeting_2026-02-01/ai_meeting_2026-02-01.md
 # → ./ai_meeting_2026-02-01/ai_meeting_2026-02-01.image-001.png
 
 # Scale images down to 800px wide
-uv run python pb2obsidian.py -t "Design Review" --image-width 800
+pb2obsidian -t "Design Review" --image-width 800
 
 # Separate Markdown and image directories
-uv run python pb2obsidian.py -t "Meeting Notes" --md-dir ~/vault/notes --image-dir ~/vault/attachments
+pb2obsidian -t "Meeting Notes" --md-dir ~/vault/notes --image-dir ~/vault/attachments
 
 # Combine options
-uv run python pb2obsidian.py -t "Q1 Planning" --image-width 1024 --image-dir ~/notes/images
+pb2obsidian -t "Q1 Planning" --image-width 1024 --image-dir ~/notes/images
 
 # Skip note file, only extract images and use clipboard
-uv run python pb2obsidian.py -t "Screenshot Batch" --image-dir ~/vault/attachments --skip-note
+pb2obsidian -t "Screenshot Batch" --image-dir ~/vault/attachments --skip-note
 ```
 
 ## Configuration
 
-All options (except `--title`) can be set via environment variables or a `.env` file so you don't have to type them every time.
+All options (except `--title` and `--skip-note`) can be set via environment variables or a `.env` file so you don't have to type them every time.
 
 ### Environment Variables
 
@@ -74,7 +76,6 @@ All options (except `--title`) can be set via environment variables or a `.env` 
 | `PB2OBSIDIAN_IMAGE_WIDTH` | `--image-width` |
 | `PB2OBSIDIAN_MD_DIR` | `--md-dir` |
 | `PB2OBSIDIAN_IMAGE_DIR` | `--image-dir` |
-| `PB2OBSIDIAN_SKIP_NOTE` | `--skip-note` (set to `1`, `true`, or `yes`) |
 
 ### `.env` File
 
@@ -85,7 +86,6 @@ Create a `.env` file in the project directory (next to `pb2obsidian.py`) or in y
 PB2OBSIDIAN_IMAGE_WIDTH=1024
 PB2OBSIDIAN_MD_DIR=~/Documents/obsidian-vault/notes
 PB2OBSIDIAN_IMAGE_DIR=~/Documents/obsidian-vault/attachments
-PB2OBSIDIAN_SKIP_NOTE=false
 ```
 
 ### Priority Order
@@ -136,7 +136,7 @@ The tool automatically detects whether the clipboard contains RTF or HTML data. 
 If the tool reports no rich text on the clipboard, you can use the diagnostic script to see what data types are available:
 
 ```bash
-uv run python probe_clipboard.py
+uv run python probe_clipboard.py  # run from the project directory
 ```
 
 This lists every pasteboard type and its data size, which is useful for debugging clipboard issues with specific applications.
@@ -145,10 +145,12 @@ This lists every pasteboard type and its data size, which is useful for debuggin
 
 1. Reads RTF or HTML data from the macOS clipboard via `NSPasteboard`
 2. Writes it to a temp file and converts to GFM (GitHub Flavored Markdown) via pandoc
-3. pandoc's `--extract-media` flag pulls embedded images out to disk
-4. Images are renamed sequentially (`{title}.image-001.png`, etc.) and optionally resized
+3. pandoc's `--extract-media` flag pulls embedded images into a temporary staging directory
+4. Images are renamed sequentially (`{title}.image-001.png`, etc.) and optionally resized in the staging directory, then moved to the final image directory
 5. Image references in the Markdown are rewritten to Obsidian embed syntax: `![[filename.png]]`
 6. The final Markdown is written to disk and placed on the clipboard
+
+This staging directory approach ensures pre-existing files in shared image directories (e.g., Obsidian's `_attachments/` folder) are never touched.
 
 ### Why GFM?
 

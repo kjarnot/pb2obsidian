@@ -49,10 +49,11 @@ def set_clipboard_text(text):
     pb.setString_forType_(text, NSPasteboardTypeString)
 
 
-def convert_to_markdown(rich_bytes, source_format, output_dir):
-    """Convert rich text bytes to Markdown via pandoc, extracting images to output_dir.
+def convert_to_markdown(rich_bytes, source_format, media_dir):
+    """Convert rich text bytes to Markdown via pandoc, extracting images to media_dir.
 
     source_format should be "rtf" or "html".
+    media_dir is the directory where pandoc will extract embedded images.
     Returns the raw Markdown string from pandoc.
     """
     import pypandoc
@@ -66,13 +67,11 @@ def convert_to_markdown(rich_bytes, source_format, output_dir):
         # Use gfm (GitHub Flavored Markdown) — closest to what Obsidian supports.
         # Pandoc's default "markdown" emits fenced divs (::: {}), bracketed spans
         # ([text]{.class}), and header attributes that Obsidian can't render.
-        # Extract images directly to the output directory so they don't end up
-        # stranded in temp paths.
         markdown = pypandoc.convert_file(
             tmp_path,
             "gfm",
             format=source_format,
-            extra_args=["--extract-media", str(output_dir), "--wrap=none"],
+            extra_args=["--extract-media", str(media_dir), "--wrap=none"],
         )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
@@ -96,21 +95,23 @@ def resize_image(image_path, max_width):
         resized.save(image_path)
 
 
-def process_images(markdown, output_dir, base_name, max_width=None):
-    """Rename extracted images sequentially and rewrite Markdown references.
+def process_images(markdown, staging_dir, dest_dir, base_name, max_width=None):
+    """Rename extracted images sequentially and move them to dest_dir.
 
-    Pandoc extracts images into output_dir (possibly in a media/ subdirectory).
+    staging_dir is a temporary directory where pandoc extracted images.
+    dest_dir is the final target directory for processed images.
     This function:
-    - Finds all image files pandoc created under output_dir
-    - Renames each to {base_name}.image-001.png, etc. in output_dir
+    - Finds all image files pandoc created under staging_dir
+    - Renames each to {base_name}.image-001.png, etc.
     - Optionally resizes images to max_width (preserving aspect ratio)
+    - Moves final files to dest_dir
     - Rewrites all references in the Markdown to Obsidian wiki-link format
 
     Returns (processed_markdown, image_count).
     """
-    # Find all image files pandoc extracted (may be in output_dir or a media/ subdir)
+    # Find all image files pandoc extracted (may be in staging_dir or a media/ subdir)
     extracted_images = sorted(
-        p for p in output_dir.rglob("*")
+        p for p in staging_dir.rglob("*")
         if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
     )
 
@@ -122,24 +123,28 @@ def process_images(markdown, output_dir, base_name, max_width=None):
         image_count += 1
         ext = src_path.suffix or ".png"
         new_name = f"{base_name}.image-{image_count:03d}{ext}"
-        dest_path = output_dir / new_name
+        staged_path = staging_dir / new_name
 
         # Replace all references to this image in the markdown (absolute or relative paths)
         # Pandoc may emit ![alt](path) or <img src="path"> depending on format
         old_path_str = str(src_path)
         markdown = markdown.replace(old_path_str, new_name)
-        # Also try the path relative to output_dir
+        # Also try the path relative to staging_dir
         try:
-            rel_path_str = str(src_path.relative_to(output_dir))
+            rel_path_str = str(src_path.relative_to(staging_dir))
             markdown = markdown.replace(rel_path_str, new_name)
         except ValueError:
             pass
 
-        if src_path != dest_path:
-            shutil.move(str(src_path), str(dest_path))
+        # Rename within staging dir first, then resize in place
+        if src_path != staged_path:
+            shutil.move(str(src_path), str(staged_path))
 
         if max_width is not None:
-            resize_image(dest_path, max_width)
+            resize_image(staged_path, max_width)
+
+        # Move the final processed image to the destination directory
+        shutil.move(str(staged_path), str(dest_dir / new_name))
 
     # Rewrite remaining ![alt](filename) references to Obsidian ![[filename]] wiki-links
     markdown = re.sub(
@@ -157,14 +162,6 @@ def process_images(markdown, output_dir, base_name, max_width=None):
 
     # Insert a space between consecutive image embeds that are concatenated
     markdown = re.sub(r"(\]\])(!?\[\[)", r"\1 \2", markdown)
-
-    # Clean up any media/ subdirectory pandoc may have created
-    media_dir = output_dir / "media"
-    if media_dir.exists():
-        try:
-            media_dir.rmdir()
-        except OSError:
-            pass
 
     return markdown, image_count
 
@@ -220,9 +217,7 @@ def parse_args():
     parser.add_argument(
         "--skip-note",
         action="store_true",
-        default=os.environ.get("PB2OBSIDIAN_SKIP_NOTE", "").lower() in ("1", "true", "yes"),
-        help="Skip creating the Markdown file. Only extract images and place Markdown on clipboard. "
-             "Env: PB2OBSIDIAN_SKIP_NOTE.",
+        help="Skip creating the Markdown file. Only extract images and place Markdown on clipboard.",
     )
 
     args = parser.parse_args()
@@ -278,9 +273,16 @@ def main():
 
     md_path = md_dir / f"{base_name}.md"
 
-    # Convert to Markdown, extracting images directly to the image directory
-    markdown = convert_to_markdown(rich_bytes, source_format, image_dir)
-    markdown, image_count = process_images(markdown, image_dir, base_name, max_width=args.image_width)
+    # Extract images to a temp directory so we never touch pre-existing files
+    # in shared directories (e.g., Obsidian's _attachments/ folder).
+    # Images are renamed and resized in the temp dir, then moved to image_dir.
+    with tempfile.TemporaryDirectory() as staging_dir:
+        staging_path = Path(staging_dir)
+        markdown = convert_to_markdown(rich_bytes, source_format, staging_path)
+        markdown, image_count = process_images(
+            markdown, staging_path, image_dir, base_name,
+            max_width=args.image_width,
+        )
 
     # Write Markdown to file (unless --skip-note)
     if not args.skip_note:
